@@ -22,7 +22,8 @@ sys_cputs(const char *s, size_t len)
 	// Destroy the environment if not.
 	
 	// LAB 3: Your code here.
-	user_mem_assert( curenv , (void*)s , len ,PTE_W|PTE_P); // Checks that environment 'env' is allowed to access the range
+	// Checks that environment 'env' is allowed to access the range
+	user_mem_assert( curenv , (void*)s , len ,PTE_W|PTE_P); 
 
 	// Print the string supplied by the user.
 	cprintf("%.*s", len, s);
@@ -126,17 +127,17 @@ sys_env_set_status(envid_t envid, int status)
 	// LAB 4: Your code here.
 	struct Env * env;
 	int env_ret_id;
-	
+	// check status 
 	if (status != ENV_RUNNABLE&&status != ENV_NOT_RUNNABLE) 
        return -E_INVAL; 
-
+    //get a env id 
 	if((env_ret_id=envid2env(envid, &env, 1))<0) 
 	   return -E_BAD_ENV;
-	
+	//set the env status
 	 env->env_status = status; 
 
 	   return 0;  
-	panic("sys_env_set_status not implemented");
+	//panic("sys_env_set_status not implemented");
 }
 
 // Set envid's trap frame to 'tf'.
@@ -167,7 +168,16 @@ static int
 sys_env_set_pgfault_upcall(envid_t envid, void *func)
 {
 	// LAB 4: Your code here.
-	panic("sys_env_set_pgfault_upcall not implemented");
+	 struct Env * env; 
+         int r; 
+         if ((r = envid2env(envid, &env, 1)) < 0) 
+                 return -E_BAD_ENV; 
+		 
+         env->env_pgfault_upcall = func; 
+		 
+         return 0; 
+ 
+	//panic("sys_env_set_pgfault_upcall not implemented");
 }
 
 // Allocate a page of memory and map it at 'va' with permission
@@ -197,30 +207,31 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	//   allocated!
 
 	// LAB 4: Your code here.
-	if (((uint32_t)va >= UTOP) || PGOFF((uint32_t)va)) 
+	//check the va 
+	if (((uint32_t)va > UTOP) || PGOFF((uint32_t)va)) 
           return -E_INVAL;
-	
+	// set perm
      int check = perm; 
-     check &= (~PTE_P) & (~PTE_U) & (~PTE_AVAIL) & (~PTE_W); 
+     check &=~PTE_USER;// (~PTE_P) & (~PTE_U) & (~PTE_AVAIL) & (~PTE_W); 
 
 	 if (check != 0 || ((perm & PTE_P) == 0) || ((perm & PTE_U) == 0)) 
          return -E_INVAL; 
-  
+    // env id
      struct Env * env; 
      int r; 
      if ((r = envid2env(envid, &env, 1)) < 0) 
           return -E_BAD_ENV; 
-          
+   // page  alloc       
      struct Page * page; 
      if ((r = page_alloc(&page)) < 0) 
         return -E_NO_MEM; 
-  
+   // page insert
      if ((r = page_insert(env->env_pgdir, page, va, perm)) < 0) { 
        page_decref(page); 
         return -E_NO_MEM; 
        } 
   
-         // use page2kva(page) but not va, otherwise you would get error. why? 
+   // page clear
      memset(page2kva(page), 0, PGSIZE); 
      return 0; 
  
@@ -255,11 +266,11 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	//   check the current permissions on the page.
 
 	// LAB 4: Your code here.
-	if ((uint32_t)srcva >= UTOP || PGOFF((uint32_t)srcva) 
-                 || (uint32_t)dstva >= UTOP || PGOFF((uint32_t)dstva)) 
+	if ((uint32_t)srcva >UTOP || PGOFF((uint32_t)srcva) 
+                 || (uint32_t)dstva > UTOP || PGOFF((uint32_t)dstva)) 
                  return -E_INVAL; 
          int check = perm; 
-         check &= (~PTE_P) & (~PTE_U) & (~PTE_AVAIL) & (~PTE_W); 
+         check &= ~PTE_USER;//(~PTE_P) & (~PTE_U) & (~PTE_AVAIL) & (~PTE_W); 
          if (check != 0 || ((perm & PTE_P) == 0) || ((perm & PTE_U) == 0)) 
                  return -E_INVAL; 
   
@@ -371,7 +382,24 @@ sys_ipc_recv(void *dstva)
 	panic("sys_ipc_recv not implemented");
 	return 0;
 }
+/*
+SYS_cputs = 0,
+	SYS_cgetc,
+	SYS_getenvid,
+	SYS_env_destroy,
+	SYS_page_alloc,
+	SYS_page_map,
+	SYS_page_unmap,
+	SYS_exofork,
+	SYS_env_set_status,
+	SYS_env_set_trapframe,
+	SYS_env_set_pgfault_upcall,
+	SYS_yield,
+	SYS_ipc_try_send,
+	SYS_ipc_recv,
+	NSYSCALLS
 
+*/
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -410,9 +438,10 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 			case SYS_env_set_status:
 				return sys_env_set_status((envid_t)a1,(int)a2);
 
-			case SYS_env_set_trapframe:
+			//case SYS_env_set_trapframe:
+			
 			case SYS_env_set_pgfault_upcall:
-				return 0;
+				return sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2); 
 
 		    case SYS_yield:
 				sys_yield();

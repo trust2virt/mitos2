@@ -1,3 +1,4 @@
+
 // Ping-pong a counter between two processes.
 // Only need to start one of these -- splits into two, crudely.
 
@@ -44,7 +45,7 @@ dumbfork(void)
 	uint8_t *addr;
 	int r;
 	extern unsigned char end[];
-
+     
 	// Allocate a new child environment.
 	// The kernel will initialize it with a copy of our register state,
 	// so that the child will appear to have called sys_exofork() too -
@@ -65,6 +66,7 @@ dumbfork(void)
 	// We're the parent.
 	// Eagerly copy our entire address space into the child.
 	// This is NOT what you should do in your fork implementation.
+	
 	for (addr = (uint8_t*) UTEXT; addr < end; addr += PGSIZE)
 		duppage(envid, addr);
 

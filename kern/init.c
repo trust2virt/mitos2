@@ -50,11 +50,19 @@ i386_init(void)
 	ENV_CREATE2(TEST, TESTSIZE)
 #else
 	// Touch all you want.
-	ENV_CREATE(user_yield);// xuq add
-	ENV_CREATE(user_hello);// xuq add
+	//ENV_CREATE(user_hello);// xuq add
+	// ENV_CREATE(user_dumbfork);// xuq add
+	//ENV_CREATE(user_yield);// xuq add
+	//ENV_CREATE(user_faultread);// xuq add
+	//ENV_CREATE(user_faultdie);// xuq add
+	//ENV_CREATE(user_faultalloc);// xuq add
+	//ENV_CREATE(user_faultallocbad);// xuq add
+
+
+	ENV_CREATE(user_forktree);// xuq add
 
 	
-	ENV_CREATE(user_dumbfork);// xuq add
+	
 
 	//ENV_CREATE(user_primes);
 	

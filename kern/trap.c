@@ -169,44 +169,37 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
-	 switch(tf->tf_trapno)
-    {
-     case T_PGFLT:
-	 	
+		if(tf->tf_trapno==T_PGFLT){
 		page_fault_handler(tf);
 		return;
+	}else
+	    if(tf->tf_trapno==T_BRKPT){
+		monitor(tf);
+		return;
+	}else 
+	    if(tf->tf_trapno==T_SYSCALL){
 		
-	 case T_BRKPT:
-	 	monitor(tf);
+		tf->tf_regs.reg_eax=syscall(
+				tf->tf_regs.reg_eax,
+				tf->tf_regs.reg_edx,
+				tf->tf_regs.reg_ecx,
+				tf->tf_regs.reg_ebx,
+				tf->tf_regs.reg_edi,
+				tf->tf_regs.reg_esi
+				);
+		
 		return;
-
-	case T_SYSCALL:
-		tf->tf_regs.reg_eax=syscall(tf->tf_regs.reg_eax,
-                                    tf->tf_regs.reg_edx,
-                                    tf->tf_regs.reg_ecx,
-                                    tf->tf_regs.reg_ebx,
-                                    tf->tf_regs.reg_edi,
-                                    tf->tf_regs.reg_esi);
-		return;
-	
-	// Handle clock interrupts.
-	// LAB 4: Your code here.
-
-	case IRQ_OFFSET+IRQ_TIMER:
+	}else 
+	    if(tf->tf_trapno==IRQ_OFFSET+IRQ_TIMER){
+		// Handle clock interrupts.
+		// LAB 4: Your code here.
 		sched_yield();
 		return;
-
-
-
-
-	default:
-		break;
-	   }
-
+	}
 	// Handle spurious interupts
 	// The hardware sometimes raises these because of noise on the
 	// IRQ line or other reasons. We don't care.
-	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SPURIOUS) {
+	    if(tf->tf_trapno == IRQ_OFFSET + IRQ_SPURIOUS) {
 		cprintf("Spurious interrupt on irq 7\n");
 		print_trapframe(tf);
 		return;
@@ -215,7 +208,7 @@ trap_dispatch(struct Trapframe *tf)
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
-	if (tf->tf_cs == GD_KT)
+	    if (tf->tf_cs == GD_KT)
 		panic("unhandled trap in kernel");
 	else {
 		env_destroy(curenv);
@@ -226,7 +219,7 @@ trap_dispatch(struct Trapframe *tf)
 void
 trap(struct Trapframe *tf)
 {
-	if ((tf->tf_cs & 3) == 3) {
+	if((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.
 		// Copy trap frame (which is currently on the stack)
 		// into 'curenv->env_tf', so that running the environment
@@ -243,7 +236,7 @@ trap(struct Trapframe *tf)
 	// If we made it to this point, then no other environment was
 	// scheduled, so we should return to the current environment
 	// if doing so makes sense.
-	if (curenv && curenv->env_status == ENV_RUNNABLE)
+	if(curenv && curenv->env_status == ENV_RUNNABLE)
 		env_run(curenv);
 	else
 		sched_yield();
@@ -291,6 +284,35 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+	
+	struct UTrapframe *utrap_frame;   
+		 
+	if(curenv->env_pgfault_upcall!=NULL){
+		   
+    if(tf->tf_esp>UXSTACKTOP-PGSIZE && tf->tf_esp<UXSTACKTOP)
+	{
+	  //In the recursive
+    utrap_frame=(struct UTrapframe *)(tf->tf_esp-sizeof(struct UTrapframe)-4);	   
+	}else{
+	  //In the non-recursive
+	  utrap_frame=(struct UTrapframe *)(UXSTACKTOP-sizeof(struct UTrapframe));
+		
+    }
+		  //Check the perm of UTrapframe
+   user_mem_assert(curenv,utrap_frame,sizeof(struct UTrapframe),PTE_P|PTE_U|PTE_W);
+		  
+		  //Push the UTrapframe
+				   utrap_frame->utf_fault_va=fault_va;
+				   utrap_frame->utf_err=tf->tf_trapno;
+				   utrap_frame->utf_regs=tf->tf_regs;
+				   utrap_frame->utf_eip=tf->tf_eip;
+				   utrap_frame->utf_eflags=tf->tf_eflags;
+				   utrap_frame->utf_esp=tf->tf_esp;
+				   tf->tf_eip=(uintptr_t)(curenv->env_pgfault_upcall);
+				   tf->tf_esp=(uintptr_t)utrap_frame;
+				   env_run(curenv);
+		  
+		  }
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
