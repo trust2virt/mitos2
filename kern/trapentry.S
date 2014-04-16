@@ -80,15 +80,7 @@ _alltraps:
 	movw %ax ,%es
 
 	pushl %esp
-	
+	cli
 	call trap
-
-	pop %esp
-	popal
-	pop %es
-	pop %ds
-	addl $8 , %esp
-
-	iret
 	
 

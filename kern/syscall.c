@@ -357,11 +357,94 @@ sys_page_unmap(envid_t envid, void *va)
 //		current environment's address space.
 //	-E_NO_MEM if there's not enough memory to map srcva in envid's
 //		address space.
+/*
+
+struct Env {
+	struct Trapframe env_tf;	// Saved registers
+	LIST_ENTRY(Env) env_link;	// Free list link pointers
+	envid_t env_id;			// Unique environment identifier
+	envid_t env_parent_id;		// env_id of this env's parent
+	unsigned env_status;		// Status of the environment
+	uint32_t env_runs;		// Number of times environment has run
+
+	// Address space
+	pde_t *env_pgdir;		// Kernel virtual address of page dir
+	physaddr_t env_cr3;		// Physical address of page dir
+
+	// Exception handling
+	void *env_pgfault_upcall;	// page fault upcall entry point
+
+	// Lab 4 IPC
+	bool env_ipc_recving;		// env is blocked receiving
+	void *env_ipc_dstva;		// va at which to map received page
+	uint32_t env_ipc_value;		// data value sent to us 
+	envid_t env_ipc_from;		// envid of the sender	
+	int env_ipc_perm;		// perm of page mapping received
+};
+
+*/
 static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	//panic("sys_ipc_try_send not implemented");
+	 int r; 
+     struct Env * env;
+	 struct Page * page; 
+//
+     if ((r = envid2env(envid, &env, 0)) < 0) 
+           return -E_BAD_ENV;
+	 
+// The send fails with a return value of -E_IPC_NOT_RECV if the
+// target has not requested IPC with sys_ipc_recv.	 
+	 if(env->env_ipc_recving == 0)
+           return -E_IPC_NOT_RECV;
+
+// Otherwise, the send succeeds, and the target's ipc fields are
+// updated as follows:
+//    env_ipc_recving is set to 0 to block future sends;
+//    env_ipc_from is set to the sending envid;
+//    env_ipc_value is set to the 'value' parameter;
+//    env_ipc_perm is set to 'perm' if a page was transferred, 0 otherwise.
+    env->env_ipc_recving = 0;
+    env->env_ipc_from = curenv->env_id;
+	env->env_ipc_value = value;
+	env->env_ipc_perm = (srcva && srcva<(void*)UTOP)? perm : 0;
+	
+// The target environment is marked runnable again, returning 0
+// from the paused ipc_recv system call.
+    //
+   if(srcva!=0 && srcva < (void *)UTOP)
+   {
+                    if (PGOFF(srcva) != 0) 
+                         return -E_INVAL; 
+                //perm check
+                 if ((perm & PTE_U) == 0 ||(perm & PTE_P) == 0 || 
+                         (perm & ~PTE_USER) != 0) 
+
+                         return -E_INVAL; 
+                 //page look up
+                 if ((page = page_lookup(curenv->env_pgdir, srcva, NULL)) == NULL) 
+                         return -E_INVAL;  
+              //insert the page
+         if ( env->env_ipc_dstva!=0 && env->env_ipc_dstva < (void *)UTOP) { 
+                 if ((r = page_insert(env->env_pgdir, page, env->env_ipc_dstva, perm)) < 0) 
+                         return -E_NO_MEM; 
+                 env->env_ipc_perm = perm; 
+		 }
+
+		 //env_ipc_recving is set to 0 to block future sends; 
+		 env->env_ipc_recving = 0;
+   }
+
+
+
+
+
+// The target environment is marked runnable again, returning 0
+    env->env_status = ENV_RUNNABLE; 
+
+    return 0;  
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -379,8 +462,23 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
-	return 0;
+	//panic("sys_ipc_recv not implemented");
+	
+	if (PGOFF(dstva) != 0)
+			return -E_INVAL;
+	
+		curenv->env_ipc_recving = 1;
+	
+		curenv->env_ipc_dstva = dstva;
+		
+		curenv->env_status = ENV_NOT_RUNNABLE;
+		curenv->env_tf.tf_regs.reg_eax = 0;
+		
+		sched_yield();
+
+		
+		return 0;
+	
 }
 /*
 SYS_cputs = 0,
@@ -448,8 +546,11 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 				return 0;
 				
 		    case SYS_ipc_try_send:
+				
+              return  sys_ipc_try_send((envid_t)a1, (uint32_t)a2, (void *)a3,( unsigned) a4);
+
             case SYS_ipc_recv:
-				break;
+				return sys_ipc_recv((void *)a1);
 				
 			default : return -E_INVAL;
 		}

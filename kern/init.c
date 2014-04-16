@@ -59,12 +59,12 @@ i386_init(void)
 	//ENV_CREATE(user_faultallocbad);// xuq add
 
 
-	ENV_CREATE(user_forktree);// xuq add
+	//ENV_CREATE(user_forktree);// xuq add
 
 	
-	
+	//ENV_CREATE(user_spin);// xuq add
 
-	//ENV_CREATE(user_primes);
+	ENV_CREATE(user_primes);
 	
 
 #endif // TEST*
