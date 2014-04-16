@@ -21,11 +21,12 @@ struct Command {
 	// return -1 to force monitor to exit
 	int (*func)(int argc, char** argv, struct Trapframe* tf);
 };
-
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+    { "backtrace", "trace stack", mon_backtrace},
 };
+
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
 unsigned read_eip();
@@ -60,7 +61,26 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+cprintf("Stack backtrace:\n");
+int *ebp=(int *)read_ebp();
+//int eip=read_eip();
+int eip=*((int *)ebp+1);
+struct Eipdebuginfo info;
+while(ebp){
+	cprintf("  ebp %08x eip %08x args %08x %08x %08x %08x %08x\n",ebp,eip,*((int *)ebp+2),*((int *)ebp+3),*((int *)ebp+4),*((int *)ebp+5),*((int *)ebp+6));
+	debuginfo_eip(eip, &info);
+	int functionNameLen=info.eip_fn_namelen;
+	int i;
+	const char *functionName=info.eip_fn_name;
+	cprintf("      %s:%d ",info.eip_file,info.eip_line);
+	for(i=0;i<functionNameLen;i++){
+		cprintf("%c",functionName[i]);
+	}
+	cprintf("+0x%x \n",eip-info.eip_fn_addr);
+	
+	ebp=(int *)(*ebp);
+	eip=*((int *)ebp+1);
+}
 	return 0;
 }
 

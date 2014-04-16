@@ -43,7 +43,8 @@ i386_init(void)
 	ENV_CREATE2(TEST, TESTSIZE);
 #else
 	// Touch all you want.
-	ENV_CREATE(user_hello);
+	ENV_CREATE(user_divzero);
+	
 #endif // TEST*
 
 

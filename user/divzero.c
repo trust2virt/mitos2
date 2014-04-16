@@ -4,6 +4,7 @@
 
 int zero;
 
+
 void
 umain(void)
 {
