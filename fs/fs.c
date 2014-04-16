@@ -75,7 +75,16 @@ read_block(uint32_t blockno, char **blk)
 		panic("reading free block %08x\n", blockno);
 
 	// LAB 5: Your code here.
-	panic("read_block not implemented");
+	addr = diskaddr(blockno);
+	if (blk != 0)
+		(*blk) = addr;
+	if (va_is_mapped(addr))
+		return 0;
+	
+	if ((r = map_block(blockno)) < 0)
+		return r;
+	if ((r = ide_read(blockno * BLKSECTS, addr, BLKSECTS)) < 0)
+		return r;
 	return 0;
 }
 
@@ -93,7 +102,14 @@ write_block(uint32_t blockno)
 	
 	// Write the disk block and clear PTE_D.
 	// LAB 5: Your code here.
-	panic("write_block not implemented");
+			addr = diskaddr(blockno);
+	int r;
+	if (!va_is_dirty(addr))
+		return;
+	if ((r = ide_write(blockno * BLKSECTS, addr, BLKSECTS)) < 0)
+		panic("write_block: ide_write error %e\n", r);
+	if ((r = sys_page_map(0, addr, 0, addr, PTE_USER)) < 0)
+		panic("write_block: sys_page_map error %e\n", r);
 }
 
 // Make sure this block is unmapped.
@@ -146,8 +162,20 @@ int
 alloc_block_num(void)
 {
 	// LAB 5: Your code here.
-	panic("alloc_block_num not implemented");
-	return -E_NO_DISK;
+	 uint32_t blockno;
+    uint32_t i;
+	//
+	for(i=3;i<super->s_nblocks;i++)
+	{
+		   if(block_is_free(i))
+		   { 
+              bitmap[i/32] &= ~(1<<(i%32)); 
+			 write_block(2);
+              return i; 
+            } 
+
+	}
+     return -E_NO_DISK;
 }
 
 // Allocate a block -- first find a free block in the bitmap,
@@ -156,8 +184,16 @@ int
 alloc_block(void)
 {
 	// LAB 5: Your code here.
-	panic("alloc_block not implemented");
-	return -E_NO_DISK;
+	 uint32_t blockno;
+     int r;
+
+	 if((blockno=alloc_block_num())<0)
+		 return -E_NO_DISK;
+
+     if((r=map_block(blockno))<0)
+		 return -E_NO_DISK;
+
+	return blockno;
 }
 
 // Read and validate the file system super-block.
@@ -292,8 +328,43 @@ int
 file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
 	// LAB 5: Your code here.
-	panic("file_block_walk not implemented");
-	return -E_NO_DISK;
+		int r; 
+    char *blk;
+	uint32_t blkno;
+    
+	 if (filebno < NDIRECT) 
+                 *ppdiskbno = &f->f_direct[filebno]; 
+	 // an entry in the indirect block
+	else if(filebno < NINDIRECT)
+		 { 
+		
+    // alloc a block , if " alloc" is 1 and there is no block
+			  if (f->f_indirect == 0) {  
+                         if (alloc == 0) //alloc == 0
+                                 return -E_NOT_FOUND; 
+                       //alloc a block
+                         if ((blkno = alloc_block()) < 0) 
+                                 return blkno; 
+                   
+                         f->f_indirect = blkno; 
+
+			  }
+
+			     // the NINDIRECT block is ok ,wheather status before
+                 if ((r = read_block(f->f_indirect, &blk)) < 0) 
+                         return r; 
+			       
+
+                *ppdiskbno =  (uint32_t*)blk + filebno;
+
+		 }
+	 // >NINDIRECT , ,,, not ok
+	  if(filebno > NINDIRECT)
+				 return -E_INVAL; 
+
+
+
+         return 0;
 }
 
 // Set '*diskbno' to the disk block number for the 'filebno'th block
@@ -311,8 +382,21 @@ int
 file_map_block(struct File *f, uint32_t filebno, uint32_t *diskbno, bool alloc)
 {
 	// LAB 5: Your code here.
-	panic("file_map_block not implemented");
-	return -E_NO_DISK;
+		int r;
+	uint32_t *ptr;
+
+	if ((r = file_block_walk(f, filebno, &ptr, alloc)) < 0)
+		return r;
+	
+	if (*ptr == 0) {
+		if (alloc == 0)
+			return -E_NOT_FOUND;
+		if ((r = alloc_block()) < 0)
+			return r;
+		*ptr = r;
+	}
+	*diskbno = *ptr;
+	return 0;
 }
 
 // Remove a block from file f.  If it's not there, just silently succeed.
@@ -344,7 +428,10 @@ file_get_block(struct File *f, uint32_t filebno, char **blk)
 	// Read in the block, leaving the pointer in *blk.
 	// Hint: Use file_map_block and read_block.
 	// LAB 5: Your code here.
-	panic("file_get_block not implemented");
+	if ((r = file_map_block(f, filebno, &diskbno, 1)) < 0)
+		return r;
+	if ((r = read_block(diskbno, blk)) < 0)
+		return r;
 	return 0;
 }
 
@@ -357,8 +444,13 @@ file_dirty(struct File *f, off_t offset)
 	char *blk;
 
 	// LAB 5: Your code here.
-	panic("file_dirty not implemented");
-	return 0;
+	//panic("file_dirty not implemented");
+	//return 0;
+	
+	if ((r = file_get_block(f, offset/BLKSIZE, &blk)) < 0)
+		  return r;
+	  *(volatile char*)blk = *(volatile char*)blk;
+	  return 0;
 }
 
 // Try to find a file named "name" in dir.  If so, set *file to it.

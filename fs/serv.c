@@ -206,7 +206,40 @@ serve_map(envid_t envid, struct Fsreq_map *rq)
 	// (see the O_ flags in inc/lib.h).
 	
 	// LAB 5: Your code here.
-	panic("serve_map not implemented");
+	//panic("serve_map not implemented");
+	    // get the OpenFile *o
+
+    if ((r = openfile_lookup(envid, rq->req_fileid, &o)) < 0)
+		goto out;
+
+    // FILE gets block
+    if ((r = file_get_block(o->o_file, rq->req_offset/BLKSIZE,&blk)) < 0){ 
+          goto out; 
+         } 
+ 
+	// *The server must make sure to keep two copies of the
+	//'struct File' in sync!*--sync the OpenFile *o
+
+      if(rq->req_offset/BLKSIZE < NDIRECT)
+		  o->o_fd->fd_file.file.f_direct[rq->req_offset/BLKSIZE] = o->o_file->f_direct[rq->req_offset/BLKSIZE];
+
+	  else
+
+        o->o_fd->fd_file.file.f_indirect=o->o_file->f_indirect;
+
+
+     //send it to client 
+     perm = PTE_P|PTE_U|PTE_SHARE;
+	 
+	perm |=( o->o_mode == O_RDONLY)? 0 : PTE_W;
+	
+    ipc_send(envid, 0, blk,perm); 
+	
+         return; 
+
+out:
+	ipc_send(envid, r, 0, 0);
+
 }
 
 void
@@ -262,7 +295,13 @@ serve_dirty(envid_t envid, struct Fsreq_dirty *rq)
 	// Returns 0 on success, < 0 on error.
 	
 	// LAB 5: Your code here.
-	panic("serve_dirty not implemented");
+	//panic("serve_dirty not implemented");
+    if ((r = openfile_lookup(envid, rq->req_fileid, &o)) < 0)
+        goto out;
+    if ((r = file_dirty(o->o_file, rq->req_offset)) < 0)
+        goto out;
+out:    
+    ipc_send(envid, r, 0, 0);
 }
 
 void

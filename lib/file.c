@@ -41,7 +41,18 @@ open(const char *path, int mode)
 	// If any step fails, use fd_close to free the file descriptor.
 
 	// LAB 5: Your code here.
-	panic("open() unimplemented!");
+	//panic("open() unimplemented!");
+		struct Fd * fd;
+	int r;
+	if ((r = fd_alloc(&fd)) < 0)
+		return r;
+	if ((r = fsipc_open(path, mode, fd)) < 0)
+		return r;
+	if ((r = fmap(fd, 0, fd->fd_file.file.f_size)) < 0) {
+		fd_close(fd, 1);
+		return r;
+	}
+	return fd2num(fd);
 }
 
 // Clean up a file-server file descriptor.
@@ -54,7 +65,13 @@ file_close(struct Fd *fd)
 	// (to free up its resources).
 
 	// LAB 5: Your code here.
-	panic("close() unimplemented!");
+	//panic("close() unimplemented!");
+	int r;
+	if ((r = funmap(fd, fd->fd_file.file.f_size, 0, 1)) < 0)
+		return r;
+	if ((r = fsipc_close(fd->fd_file.id)) < 0)
+		return r;
+	return 0;
 }
 
 // Read 'n' bytes from 'fd' at the current seek position into 'buf'.
@@ -167,8 +184,19 @@ static int
 fmap(struct Fd* fd, off_t oldsize, off_t newsize)
 {
 	// LAB 5: Your code here.
-	panic("fmap not implemented");
-	return -E_UNSPECIFIED;
+		size_t i;
+	char *va;
+	int r;
+
+	va = fd2data(fd);
+	for (i = ROUNDUP(oldsize, PGSIZE); i < newsize; i += PGSIZE) {
+		if ((r = fsipc_map(fd->fd_file.id, i, va + i)) < 0) {
+			// unmap anything we may have mapped so far
+			funmap(fd, i, oldsize, 0);
+			return r;
+		}
+	}
+	return 0;
 }
 
 // Unmap any file pages that no longer represent valid file pages
@@ -183,8 +211,26 @@ static int
 funmap(struct Fd* fd, off_t oldsize, off_t newsize, bool dirty)
 {
 	// LAB 5: Your code here.
-	panic("funmap not implemented");
-	return -E_UNSPECIFIED;
+		size_t i;
+	char *va;
+	int r, ret;
+
+	va = fd2data(fd);
+
+	// Check vpd to see if anything is mapped.
+	if (!(vpd[VPD(va)] & PTE_P))
+		return 0;
+
+	ret = 0;
+	for (i = ROUNDUP(newsize, PGSIZE); i < oldsize; i += PGSIZE)
+		if (vpt[VPN(va + i)] & PTE_P) {
+			if (dirty
+			    && (vpt[VPN(va + i)] & PTE_D)
+			    && (r = fsipc_dirty(fd->fd_file.id, i)) < 0)
+				ret = r;
+			sys_page_unmap(0, va + i);
+		}
+  	return ret;
 }
 
 // Delete a file
