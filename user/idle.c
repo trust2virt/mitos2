@@ -15,7 +15,6 @@ umain(void)
 	// doing so allows the processor to conserve power more effectively.
 	while (1) {
 		sys_yield();
-
 		// Break into the JOS kernel monitor after each sys_yield().
 		// A real, "production" OS of course would NOT do this -
 		// it would just endlessly loop waiting for hardware interrupts

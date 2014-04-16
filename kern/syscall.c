@@ -22,6 +22,7 @@ sys_cputs(const char *s, size_t len)
 	// Destroy the environment if not.
 	
 	// LAB 3: Your code here.
+	user_mem_assert( curenv , (void*)s , len ,PTE_W|PTE_P); // Checks that environment 'env' is allowed to access the range
 
 	// Print the string supplied by the user.
 	cprintf("%.*s", len, s);
@@ -88,10 +89,22 @@ sys_exofork(void)
 	// It should be left as env_alloc created it, except that
 	// status is set to ENV_NOT_RUNNABLE, and the register set is copied
 	// from the current environment -- but tweaked so sys_exofork
-	// will appear to return 0.
-
+	// will appear to return 0
+	
+     struct Env *child_env;
+	 if(env_alloc(&child_env,curenv->env_id)!=0) // env_alloc a new env
+	 {
+	      return -E_NO_FREE_ENV;
+	 }
+	  
+      child_env->env_status=ENV_NOT_RUNNABLE; // set the child env's env_status 
+	  child_env->env_tf=curenv->env_tf; // copy env_tf from the curenv's
+	  child_env->env_tf.tf_regs.reg_eax=0;// will appear to return 0.
+	
+	 return child_env->env_id;  // child env's env_id
+	 
 	// LAB 4: Your code here.
-	panic("sys_exofork not implemented");
+	//panic("sys_exofork not implemented");
 }
 
 // Set envid's env_status to status, which must be ENV_RUNNABLE
@@ -111,6 +124,18 @@ sys_env_set_status(envid_t envid, int status)
 	// envid's status.
 
 	// LAB 4: Your code here.
+	struct Env * env;
+	int env_ret_id;
+	
+	if (status != ENV_RUNNABLE&&status != ENV_NOT_RUNNABLE) 
+       return -E_INVAL; 
+
+	if((env_ret_id=envid2env(envid, &env, 1))<0) 
+	   return -E_BAD_ENV;
+	
+	 env->env_status = status; 
+
+	   return 0;  
 	panic("sys_env_set_status not implemented");
 }
 
@@ -172,7 +197,34 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	//   allocated!
 
 	// LAB 4: Your code here.
-	panic("sys_page_alloc not implemented");
+	if (((uint32_t)va >= UTOP) || PGOFF((uint32_t)va)) 
+          return -E_INVAL;
+	
+     int check = perm; 
+     check &= (~PTE_P) & (~PTE_U) & (~PTE_AVAIL) & (~PTE_W); 
+
+	 if (check != 0 || ((perm & PTE_P) == 0) || ((perm & PTE_U) == 0)) 
+         return -E_INVAL; 
+  
+     struct Env * env; 
+     int r; 
+     if ((r = envid2env(envid, &env, 1)) < 0) 
+          return -E_BAD_ENV; 
+          
+     struct Page * page; 
+     if ((r = page_alloc(&page)) < 0) 
+        return -E_NO_MEM; 
+  
+     if ((r = page_insert(env->env_pgdir, page, va, perm)) < 0) { 
+       page_decref(page); 
+        return -E_NO_MEM; 
+       } 
+  
+         // use page2kva(page) but not va, otherwise you would get error. why? 
+     memset(page2kva(page), 0, PGSIZE); 
+     return 0; 
+ 
+	//panic("sys_page_alloc not implemented");
 }
 
 // Map the page of memory at 'srcva' in srcenvid's address space
@@ -203,7 +255,34 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	//   check the current permissions on the page.
 
 	// LAB 4: Your code here.
-	panic("sys_page_map not implemented");
+	if ((uint32_t)srcva >= UTOP || PGOFF((uint32_t)srcva) 
+                 || (uint32_t)dstva >= UTOP || PGOFF((uint32_t)dstva)) 
+                 return -E_INVAL; 
+         int check = perm; 
+         check &= (~PTE_P) & (~PTE_U) & (~PTE_AVAIL) & (~PTE_W); 
+         if (check != 0 || ((perm & PTE_P) == 0) || ((perm & PTE_U) == 0)) 
+                 return -E_INVAL; 
+  
+         struct Env * srcenv; 
+         struct Env * dstenv; 
+         int r; 
+         if ((r = envid2env(srcenvid, &srcenv, 1)) < 0) 
+                 return -E_BAD_ENV; 
+         if ((r = envid2env(dstenvid, &dstenv, 1)) < 0) 
+                 return -E_BAD_ENV; 
+  
+         struct Page * page; 
+         pte_t * pte; 
+         if (((page = page_lookup(srcenv->env_pgdir, srcva, &pte)) == NULL)  
+                 || ((*pte) & PTE_P) == 0)  
+                 return -E_INVAL; 
+         if ((perm & PTE_W) && (((*pte) & PTE_W) == 0)) 
+                 return -E_INVAL; 
+         if ((r = page_insert(dstenv->env_pgdir, page, dstva, perm)) < 0) 
+                 return -E_NO_MEM; 
+         return 0; 
+ 
+	//panic("sys_page_map not implemented");
 }
 
 // Unmap the page of memory at 'va' in the address space of 'envid'.
@@ -219,7 +298,16 @@ sys_page_unmap(envid_t envid, void *va)
 	// Hint: This function is a wrapper around page_remove().
 
 	// LAB 4: Your code here.
-	panic("sys_page_unmap not implemented");
+	  if (va >= (void *)UTOP || ((uint32_t)va & (PGSIZE - 1)) != 0) 
+                 return -E_INVAL; 
+         int r; 
+         struct Env * env; 
+         if ((r = envid2env(envid, &env, 1)) < 0) 
+                 return -E_BAD_ENV; 
+         page_remove(env->env_pgdir, va); 
+         return 0; 
+ 
+	//panic("sys_page_unmap not implemented");
 }
 
 // Try to send 'value' to the target env 'envid'.
@@ -284,7 +372,6 @@ sys_ipc_recv(void *dstva)
 	return 0;
 }
 
-
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -292,7 +379,52 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	// Call the function corresponding to the 'syscallno' parameter.
 	// Return any appropriate return value.
 	// LAB 3: Your code here.
+		switch(syscallno)
+		{
+			case SYS_cputs:
+				sys_cputs((const char *)a1,a2);
+				return 0;
+				
+			case SYS_cgetc:
+				return sys_cgetc();
+				
+			case SYS_getenvid:
+				return sys_getenvid();
+				
+			case SYS_env_destroy:
+				return sys_env_destroy(a1);
+				
 
-	panic("syscall not implemented");
+			case SYS_page_alloc:
+				return sys_page_alloc((envid_t)a1, (void *)a2, (int)a3);
+
+			case SYS_page_map:
+				return sys_page_map((envid_t)a1, (void *)a2, (envid_t)a3, (void *)a4, (int)a5); 
+
+			case SYS_page_unmap:
+				return sys_page_unmap((envid_t)a1, (void *)a2); 
+						
+			case SYS_exofork:
+				return sys_exofork();
+		
+			case SYS_env_set_status:
+				return sys_env_set_status((envid_t)a1,(int)a2);
+
+			case SYS_env_set_trapframe:
+			case SYS_env_set_pgfault_upcall:
+				return 0;
+
+		    case SYS_yield:
+				sys_yield();
+				return 0;
+				
+		    case SYS_ipc_try_send:
+            case SYS_ipc_recv:
+				break;
+				
+			default : return -E_INVAL;
+		}
+	return 0;
+	//panic("syscall not implemented");
 }
 

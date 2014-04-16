@@ -64,6 +64,59 @@ idt_init(void)
 	extern struct Segdesc gdt[];
 	
 	// LAB 3: Your code here.
+	      extern void divide_error();
+		  extern void debug_exception();
+		  extern void non_maskable_interrupt();
+		  extern void breakpointPtr();
+		  extern void overflow();
+		  extern void bounds_check();
+		  extern void illegal_opcode();
+		  extern void device_not_available();
+		  extern void double_fault();
+		  extern void invalid_task_switch_segment();
+		  extern void segment_not_present();
+		  extern void stack_segment();
+		  extern void general_protection_fault();
+		  extern void page_fault();
+		  extern void float_point_error();
+		  extern void alignment_check();
+		  extern void machine_check();
+		  extern void SIMD_float_point_error();
+		  
+		  extern void sys_call();
+		  
+		  SETGATE(idt[T_DIVIDE],1,GD_KT,divide_error,0)
+		  SETGATE(idt[T_DEBUG], 1,GD_KT,debug_exception,0)
+		  SETGATE(idt[T_NMI],1,GD_KT,non_maskable_interrupt,0)
+		  SETGATE(idt[T_BRKPT],1,GD_KT,breakpointPtr,3)
+		  SETGATE(idt[T_OFLOW],1,GD_KT,overflow,0)
+		  SETGATE(idt[T_BOUND],1,GD_KT,bounds_check,0)
+		  SETGATE(idt[T_ILLOP],1,GD_KT,illegal_opcode,0)
+		  SETGATE(idt[T_DEVICE],1,GD_KT,device_not_available,0)
+		  SETGATE(idt[T_DBLFLT],1,GD_KT,double_fault,0)
+		  SETGATE(idt[T_TSS],1,GD_KT,invalid_task_switch_segment,0)
+		  SETGATE(idt[T_SEGNP],1,GD_KT,segment_not_present,0)
+		  SETGATE(idt[T_STACK],1,GD_KT,stack_segment, 0)
+		  SETGATE(idt[T_GPFLT],1,GD_KT,general_protection_fault,0)
+		  SETGATE(idt[T_PGFLT],1,GD_KT,page_fault, 0) 
+		  SETGATE(idt[T_FPERR],1,GD_KT,float_point_error,0)
+		  SETGATE(idt[T_ALIGN],1,GD_KT,alignment_check,0)
+		  SETGATE(idt[T_MCHK],1,GD_KT,machine_check,0)
+		  SETGATE(idt[T_SIMDERR],1,GD_KT,SIMD_float_point_error,0)
+		  
+		  SETGATE(idt[T_SYSCALL],0, GD_KT, sys_call, 3)
+
+    //lab4 
+	extern void irq_timer_handler();
+	extern void irq_kbd_handler();
+	extern void irq_spurious_handler();
+	extern void irq_ide_handler();
+	extern void irq_error_handler();
+	SETGATE(idt[IRQ_OFFSET+IRQ_TIMER],0,GD_KT,irq_timer_handler,0);
+	SETGATE(idt[IRQ_OFFSET+IRQ_KBD],0,GD_KT,irq_kbd_handler,0);
+	SETGATE(idt[IRQ_OFFSET+IRQ_SPURIOUS],0,GD_KT,irq_spurious_handler,0);
+	SETGATE(idt[IRQ_OFFSET+IRQ_IDE],0,GD_KT,irq_ide_handler,0);
+	SETGATE(idt[IRQ_OFFSET+IRQ_ERROR],0,GD_KT,irq_error_handler,0);
 
 	// Setup a TSS so that we get the right stack
 	// when we trap to the kernel.
@@ -116,9 +169,39 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+	 switch(tf->tf_trapno)
+    {
+     case T_PGFLT:
+	 	
+		page_fault_handler(tf);
+		return;
+		
+	 case T_BRKPT:
+	 	monitor(tf);
+		return;
+
+	case T_SYSCALL:
+		tf->tf_regs.reg_eax=syscall(tf->tf_regs.reg_eax,
+                                    tf->tf_regs.reg_edx,
+                                    tf->tf_regs.reg_ecx,
+                                    tf->tf_regs.reg_ebx,
+                                    tf->tf_regs.reg_edi,
+                                    tf->tf_regs.reg_esi);
+		return;
 	
 	// Handle clock interrupts.
 	// LAB 4: Your code here.
+
+	case IRQ_OFFSET+IRQ_TIMER:
+		sched_yield();
+		return;
+
+
+
+
+	default:
+		break;
+	   }
 
 	// Handle spurious interupts
 	// The hardware sometimes raises these because of noise on the
@@ -178,7 +261,7 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 	
 	// LAB 3: Your code here.
-
+   if ((tf->tf_cs & 3) != 3) panic("kenel mode page fault");
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
 
